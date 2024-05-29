@@ -97,32 +97,86 @@ export class CompanyService {
             'commonStockSharesOutstanding',
             period,
         );
+
+        const cashVsDebtData = this.getCashVsDebtData(
+            balanceSheet,
+            labels,
+            period,
+            'bar',
+            'Cash vs Debt',
+        );
+
         return [
             {
                 labels,
                 label: 'Net Income',
-                color: 'blue',
-                data: netIncomeData.data,
+
+                datasets: [
+                    {
+                        data: netIncomeData,
+                        label: 'Net Income',
+                        color: 'blue',
+                    },
+                ],
                 chartType: 'bar',
-                metric: netIncomeData.metric,
             },
             {
                 labels,
                 label: 'Free Cash Flow',
-                color: 'green',
-                data: cashFlowData.data,
+                datasets: [
+                    {
+                        data: cashFlowData,
+                        label: 'Free Cash Flow',
+                        color: 'green',
+                    },
+                ],
                 chartType: 'bar',
-                metric: cashFlowData.metric,
             },
             {
                 labels,
                 label: 'Shares Outstanding',
-                color: 'red',
-                data: balanceSheetData.data,
+                datasets: [
+                    {
+                        data: balanceSheetData,
+                        label: 'Shares Outstanding',
+                        color: 'red',
+                    },
+                ],
                 chartType: 'bar',
-                metric: balanceSheetData.metric,
             },
+            cashVsDebtData,
         ];
+    }
+
+    private getCashVsDebtData(
+        balanceSheet: Record<string, EHDBalanceSheet>,
+        labels: string[],
+        period: 'quarterly' | 'yearly',
+        chartType: string,
+        label: string,
+    ): ChartData {
+        const cash = this.getDataForLabels(
+            balanceSheet,
+            labels,
+            'cashAndEquivalents',
+            period,
+        );
+        const debt = this.getDataForLabels(
+            balanceSheet,
+            labels,
+            'shortLongTermDebtTotal',
+            period,
+        );
+
+        return {
+            labels,
+            label: label,
+            datasets: [
+                { data: cash, label: 'Cash', color: 'green' },
+                { data: debt, label: 'Debt', color: 'red' },
+            ],
+            chartType: chartType,
+        };
     }
 
     private getLabels(
@@ -136,8 +190,9 @@ export class CompanyService {
             .reverse()
             .filter(
                 (key) =>
-                    period !== 'quarterly' ||
-                    new Date(key).getFullYear() >= 2019,
+                    (period !== 'quarterly' ||
+                        new Date(key).getFullYear() >= 2019) &&
+                    (period !== 'yearly' || new Date(key).getFullYear() > 2004),
             )
             .map((date) => {
                 const dt = new Date(date);
@@ -154,13 +209,10 @@ export class CompanyService {
         labels: string[],
         metric: string,
         period: 'quarterly' | 'yearly',
-    ): { data: number[]; metric: string } {
+    ): number[] {
         const values = Object.values(financialData).map((entry) =>
             parseFloat(entry[metric]),
         );
-        const scale =
-            Math.max(...values) >= 1_000_000 ? 'Millions' : 'Thousands';
-        const divisor = scale === 'Millions' ? 1_000_000 : 1_000;
 
         const dataMap = Object.keys(financialData).reduce(
             (acc, key) => {
@@ -169,18 +221,11 @@ export class CompanyService {
                     period === 'quarterly'
                         ? `Q${Math.ceil((dt.getMonth() + 1) / 3)}'${dt.getFullYear().toString().slice(-2)}`
                         : dt.getFullYear().toString();
-                acc[formattedKey] =
-                    parseFloat(financialData[key][metric]) / divisor;
+                acc[formattedKey] = parseFloat(financialData[key][metric]);
                 return acc;
             },
             {} as Record<string, number>,
         );
-
-        console.log(`DataMap for ${period}:`, dataMap);
-
-        return {
-            data: labels.map((label) => dataMap[label] ?? null),
-            metric: scale,
-        };
+        return labels.map((label) => dataMap[label] ?? null);
     }
 }

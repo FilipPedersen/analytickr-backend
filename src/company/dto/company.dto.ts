@@ -21,10 +21,14 @@ export interface Technicals {
 export interface ChartData {
     labels: string[];
     label: string;
-    color: string;
     chartType: string;
+    datasets: Dataset[];
+}
+
+export interface Dataset {
     data: number[];
-    metric: string;
+    label: string;
+    color: string;
 }
 export interface Valuation {
     peRatio: number;
