@@ -23,6 +23,7 @@ export class CompanyService {
                 company: {
                     name: data.General?.Name ?? 'N/A',
                     ticker: data.General?.Code ?? 'N/A',
+                    logoUrl: data.General?.LogoURL ?? 'N/A',
                     sector: data.General?.Sector ?? 'N/A',
                     industry: data.General?.Industry ?? 'N/A',
                     currencySymbol: data.General?.CurrencySymbol ?? 'N/A',

@@ -40,6 +40,7 @@ export interface GrowthMetrics {
 
 export interface Company {
     name: string;
+    logoUrl: string;
     ticker: string;
     sector: string;
     industry: string;
