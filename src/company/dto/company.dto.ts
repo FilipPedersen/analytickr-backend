@@ -23,6 +23,7 @@ export interface ChartData {
     label: string;
     chartType: string;
     datasets: Dataset[];
+    metric: string;
 }
 
 export interface Dataset {

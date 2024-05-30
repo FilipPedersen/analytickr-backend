@@ -84,18 +84,21 @@ export class CompanyService {
             labels,
             'netIncome',
             period,
+            'millions',
         );
         const cashFlowData = this.getDataForLabels(
             cashFlow,
             labels,
             'freeCashFlow',
             period,
+            'millions',
         );
         const balanceSheetData = this.getDataForLabels(
             balanceSheet,
             labels,
             'commonStockSharesOutstanding',
             period,
+            'millions',
         );
 
         const cashVsDebtData = this.getCashVsDebtData(
@@ -113,11 +116,12 @@ export class CompanyService {
 
                 datasets: [
                     {
-                        data: netIncomeData,
+                        data: netIncomeData.data,
                         label: 'Net Income',
                         color: 'blue',
                     },
                 ],
+                metric: netIncomeData.metric,
                 chartType: 'bar',
             },
             {
@@ -125,11 +129,12 @@ export class CompanyService {
                 label: 'Free Cash Flow',
                 datasets: [
                     {
-                        data: cashFlowData,
+                        data: cashFlowData.data,
                         label: 'Free Cash Flow',
                         color: 'green',
                     },
                 ],
+                metric: cashFlowData.metric,
                 chartType: 'bar',
             },
             {
@@ -137,11 +142,12 @@ export class CompanyService {
                 label: 'Shares Outstanding',
                 datasets: [
                     {
-                        data: balanceSheetData,
+                        data: balanceSheetData.data,
                         label: 'Shares Outstanding',
                         color: 'red',
                     },
                 ],
+                metric: balanceSheetData.metric,
                 chartType: 'bar',
             },
             cashVsDebtData,
@@ -160,21 +166,24 @@ export class CompanyService {
             labels,
             'cashAndEquivalents',
             period,
+            'millions',
         );
         const debt = this.getDataForLabels(
             balanceSheet,
             labels,
             'shortLongTermDebtTotal',
             period,
+            'millions',
         );
 
         return {
             labels,
             label: label,
             datasets: [
-                { data: cash, label: 'Cash', color: 'green' },
-                { data: debt, label: 'Debt', color: 'red' },
+                { data: cash.data, label: 'Cash', color: 'green' },
+                { data: debt.data, label: 'Debt', color: 'red' },
             ],
+            metric: cash.metric,
             chartType: chartType,
         };
     }
@@ -209,11 +218,8 @@ export class CompanyService {
         labels: string[],
         metric: string,
         period: 'quarterly' | 'yearly',
-    ): number[] {
-        const values = Object.values(financialData).map((entry) =>
-            parseFloat(entry[metric]),
-        );
-
+        format: 'millions' | 'thousands' | 'percent',
+    ): { data: number[]; metric: string } {
         const dataMap = Object.keys(financialData).reduce(
             (acc, key) => {
                 const dt = new Date(key);
@@ -226,6 +232,32 @@ export class CompanyService {
             },
             {} as Record<string, number>,
         );
-        return labels.map((label) => dataMap[label] ?? null);
+        const data = labels.map((label) => dataMap[label] ?? null);
+        return this.formatData(data, format);
+    }
+
+    private formatData(
+        data: number[],
+        format: 'millions' | 'thousands' | 'percent',
+    ): { data: number[]; metric: string } {
+        switch (format) {
+            case 'millions':
+                return {
+                    data: data.map((value) => value / 1000000),
+                    metric: 'Millions',
+                };
+            case 'thousands':
+                return {
+                    data: data.map((value) => value / 1000),
+                    metric: 'Thousands',
+                };
+            case 'percent':
+                return {
+                    data: data.map((value) => value * 100),
+                    metric: 'Percent',
+                };
+            default:
+                return { data, metric: '' };
+        }
     }
 }
