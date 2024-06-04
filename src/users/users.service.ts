@@ -6,10 +6,6 @@ const prisma = new PrismaClient();
 export class UsersService {
     constructor() {}
     async createUser(userData: User): Promise<User> {
-        console.log('clerkId', userData.clerkId);
-        console.log('email', userData.email);
-        console.log('id', userData.id);
-
         const createUser = await prisma.user.create({
             data: {
                 clerkId: userData.clerkId,

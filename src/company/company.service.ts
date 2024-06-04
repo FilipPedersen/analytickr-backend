@@ -101,12 +101,28 @@ export class CompanyService {
             'millions',
         );
 
+        const totalRevenue = this.getDataForLabels(
+            incomeStatement,
+            labels,
+            'totalRevenue',
+            period,
+            'millions',
+        );
+
         const cashVsDebtData = this.getCashVsDebtData(
             balanceSheet,
             labels,
             period,
             'bar',
             'Cash vs Debt',
+        );
+
+        const operatingLeverageData = this.getOperatingLeverageData(
+            incomeStatement,
+            labels,
+            period,
+            'line',
+            'Operating Leverage',
         );
 
         return [
@@ -118,10 +134,23 @@ export class CompanyService {
                     {
                         data: netIncomeData.data,
                         label: 'Net Income',
-                        color: 'blue',
+                        color: 'grey',
                     },
                 ],
                 metric: netIncomeData.metric,
+                chartType: 'bar',
+            },
+            {
+                labels,
+                label: 'Total Revenue',
+                datasets: [
+                    {
+                        data: totalRevenue.data,
+                        label: 'Total Revenue',
+                        color: 'blue',
+                    },
+                ],
+                metric: totalRevenue.metric,
                 chartType: 'bar',
             },
             {
@@ -151,7 +180,46 @@ export class CompanyService {
                 chartType: 'bar',
             },
             cashVsDebtData,
+            operatingLeverageData,
         ];
+    }
+
+    private getOperatingLeverageData(
+        incomeStatement: Record<string, EHDIncomeStatement>,
+        labels: string[],
+        period: 'quarterly' | 'yearly',
+        chartType: string,
+        label: string,
+    ): ChartData {
+        const revenue = this.getDataForLabels(
+            incomeStatement,
+            labels,
+            'totalRevenue',
+            period,
+            'millions',
+        );
+        const operatingExpenses = this.getDataForLabels(
+            incomeStatement,
+            labels,
+            'totalOperatingExpenses',
+            period,
+            'millions',
+        );
+
+        return {
+            labels,
+            label: label,
+            datasets: [
+                { data: revenue.data, label: 'Revenue', color: 'blue' },
+                {
+                    data: operatingExpenses.data,
+                    label: 'Operating Expenses',
+                    color: 'purple',
+                },
+            ],
+            metric: revenue.metric,
+            chartType: chartType,
+        };
     }
 
     private getCashVsDebtData(
