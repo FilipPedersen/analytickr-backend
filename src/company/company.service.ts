@@ -19,6 +19,16 @@ export class CompanyService {
             const response = await fetch(url);
             const data: EHDStockFundamentals = await response.json();
 
+            const institutionalOwners = Object.keys(data.Holders.Institutions)
+                .slice(0, 10)
+                .map((key) => {
+                    const institution = data.Holders.Institutions[key];
+                    return {
+                        name: institution.name,
+                        totalShares: institution.totalShares,
+                    };
+                });
+
             const formattedData: CompanyDto = {
                 company: {
                     name: data.General?.Name ?? 'N/A',
@@ -54,6 +64,18 @@ export class CompanyService {
                 grossMargin: data.Highlights?.ProfitMargin ?? 0,
                 quarterly: this.getChartData(data, 'quarterly'),
                 yearly: this.getChartData(data, 'yearly'),
+                companyInformation: {
+                    ceo: data.General?.Officers[0].Name ?? 'N/A',
+                    employees: data.General?.FullTimeEmployees ?? 0,
+                    headquarters:
+                        `${data.General?.AddressData?.City}, ${data.General?.AddressData?.Country}` ??
+                        'N/A',
+                    industry: data.General?.Industry ?? 'N/A',
+                    sharesShort: data.Technicals?.SharesShort ?? 0,
+                    shortInterest: data.Technicals?.ShortPercent ?? 0,
+                    website: data.General?.WebURL ?? 'N/A',
+                    institutionalOwners: institutionalOwners,
+                },
             };
 
             return formattedData;

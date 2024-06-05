@@ -8,6 +8,7 @@ export interface CompanyDto {
     grossMargin: number;
     quarterly: ChartData[];
     yearly: ChartData[];
+    companyInformation: CompanyInformation;
 }
 
 export interface Technicals {
@@ -51,4 +52,20 @@ export interface Company {
     industry: string;
     currencySymbol: string;
     exchange: string;
+}
+
+export interface CompanyInformation {
+    ceo: string;
+    employees: number;
+    headquarters: string;
+    industry: string;
+    website: string;
+    shortInterest: number;
+    sharesShort: number;
+    institutionalOwners: InstitutionalOwner[];
+}
+
+export interface InstitutionalOwner {
+    name: string;
+    totalShares: number;
 }
