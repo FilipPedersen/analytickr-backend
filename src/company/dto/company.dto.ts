@@ -9,6 +9,7 @@ export interface CompanyDto {
     quarterly: ChartData[];
     yearly: ChartData[];
     companyInformation: CompanyInformation;
+    ownership: Ownership;
 }
 
 export interface Technicals {
@@ -62,7 +63,21 @@ export interface CompanyInformation {
     website: string;
     shortInterest: number;
     sharesShort: number;
+}
+
+export interface Ownership {
     institutionalOwners: InstitutionalOwner[];
+    institutionalBreakdown: PieChart;
+}
+
+export interface PieChart {
+    labels: string[];
+    datasets: [
+        {
+            data: number[];
+            backgroundColor: string[];
+        },
+    ];
 }
 
 export interface InstitutionalOwner {

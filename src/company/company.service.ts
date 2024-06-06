@@ -1,5 +1,5 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import { ChartData, CompanyDto } from './dto/company.dto';
+import { ChartData, CompanyDto, PieChart } from './dto/company.dto';
 import {
     EHDStockFundamentals,
     EHDIncomeStatement,
@@ -74,6 +74,9 @@ export class CompanyService {
                     sharesShort: data.Technicals?.SharesShort ?? 0,
                     shortInterest: data.Technicals?.ShortPercent ?? 0,
                     website: data.General?.WebURL ?? 'N/A',
+                },
+                ownership: {
+                    institutionalBreakdown: this.createPieChart(data),
                     institutionalOwners: institutionalOwners,
                 },
             };
@@ -204,6 +207,26 @@ export class CompanyService {
             cashVsDebtData,
             operatingLeverageData,
         ];
+    }
+
+    private createPieChart(data: EHDStockFundamentals): PieChart {
+        const institutionalOwnership = data.SharesStats.PercentInstitutions;
+        const insiderOwnership = data.SharesStats.PercentInsiders;
+        const retailOwnership = 100 - institutionalOwnership - insiderOwnership;
+
+        return {
+            labels: ['Institutional', 'Insider', 'Retail'],
+            datasets: [
+                {
+                    data: [
+                        institutionalOwnership,
+                        insiderOwnership,
+                        retailOwnership,
+                    ],
+                    backgroundColor: ['#A8DADC', '#457B9D', '#1D3557'],
+                },
+            ],
+        };
     }
 
     private getOperatingLeverageData(
