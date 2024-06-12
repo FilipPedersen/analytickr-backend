@@ -210,9 +210,15 @@ export class CompanyService {
     }
 
     private createPieChart(data: EHDStockFundamentals): PieChart {
-        const institutionalOwnership = data.SharesStats.PercentInstitutions;
-        const insiderOwnership = data.SharesStats.PercentInsiders;
-        const retailOwnership = 100 - institutionalOwnership - insiderOwnership;
+        const institutionalOwnership = parseFloat(
+            data.SharesStats.PercentInstitutions.toFixed(1),
+        );
+        const insiderOwnership = parseFloat(
+            data.SharesStats.PercentInsiders.toFixed(1),
+        );
+        const retailOwnership = parseFloat(
+            (100 - institutionalOwnership - insiderOwnership).toFixed(1),
+        );
 
         return {
             labels: ['Institutional', 'Insider', 'Retail'],

@@ -8,7 +8,7 @@ export class FollowedStocksService {
     constructor() {}
 
     async getFollowedStocks(clerkId: string) {
-        const user = prisma.user.findUnique({
+        const user = await prisma.user.findUnique({
             where: { clerkId },
             include: { stocks: true },
         });
