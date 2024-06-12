@@ -17,7 +17,7 @@ import { FollowedStocksModule } from './user/followed-stocks/followed-stocks.mod
         ConfigModule.forRoot({
             isGlobal: true,
         }),
-        PassportModule,
+        PassportModule.register({ defaultStrategy: 'jwt' }),
         FollowedStocksModule,
     ],
     controllers: [AppController, UsersController],
