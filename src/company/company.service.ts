@@ -6,89 +6,114 @@ import {
     EHDCashFlow,
     EHDBalanceSheet,
 } from 'ehd-js/src/types/model';
+import { lastValueFrom, map } from 'rxjs';
+import { HttpService } from '@nestjs/axios';
 
-const API_KEY = 'demo';
+const API_KEY = process.env.FMP_API_KEY;
 
 @Injectable()
 export class CompanyService {
+    private readonly apiUrl = 'https://financialmodelingprep.com/api/v3';
+    private readonly apiKey = API_KEY;
+
+    constructor(private httpService: HttpService) {}
+
     async getCompanyFundamentals(ticker: string): Promise<CompanyDto> {
-        const apiKey = API_KEY;
-        const url = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiKey}`;
+        const companyProfile = await lastValueFrom(
+            this.httpService
+                .get(`${this.apiUrl}/profile/${ticker}?apikey=${this.apiKey}`)
+                .pipe(map((response) => response.data[0])),
+        );
 
-        try {
-            const response = await fetch(url);
-            const data: EHDStockFundamentals = await response.json();
+        const financialGrowth = await lastValueFrom(
+            this.httpService
+                .get(
+                    `${this.apiUrl}/financial-growth/${ticker}?apikey=${this.apiKey}`,
+                )
+                .pipe(map((response) => response.data[0])),
+        );
 
-            const institutionalOwners = Object.keys(data.Holders.Institutions)
-                .slice(0, 10)
-                .map((key) => {
-                    const institution = data.Holders.Institutions[key];
-                    return {
-                        name: institution.name,
-                        totalShares: institution.totalShares,
-                    };
-                });
+        const keyMetrics = await lastValueFrom(
+            this.httpService
+                .get(
+                    `${this.apiUrl}/key-metrics-ttm/${ticker}?apikey=${this.apiKey}`,
+                )
+                .pipe(map((response) => response.data[0])),
+        );
 
-            const formattedData: CompanyDto = {
-                company: {
-                    name: data.General?.Name ?? 'N/A',
-                    ticker: data.General?.Code ?? 'N/A',
-                    logoUrl: data.General?.LogoURL ?? 'N/A',
-                    sector: data.General?.Sector ?? 'N/A',
-                    industry: data.General?.Industry ?? 'N/A',
-                    currencySymbol: data.General?.CurrencySymbol ?? 'N/A',
-                    exchange: data.General?.Exchange ?? 'N/A',
-                },
-                technicals: {
-                    revenue: data.Highlights?.RevenueTTM ?? 0,
-                    '52weekHigh': data.Technicals?.['52WeekHigh'] ?? 0,
-                    '52weekLow': data.Technicals?.['52WeekLow'] ?? 0,
-                    wallStreetTargetPrice:
-                        data.Highlights?.WallStreetTargetPrice ?? 0,
-                    ebitda: data.Highlights?.EBITDA ?? 0,
-                },
-                growthMetrics: {
-                    revenueGrowthYoY:
-                        data.Highlights?.QuarterlyRevenueGrowthYOY ?? 0,
-                    profitsGrowthYoY:
-                        data.Highlights?.QuarterlyEarningsGrowthYOY ?? 0,
-                },
-                valuation: {
-                    peRatio: data.Highlights?.PERatio ?? 0,
-                    forwardPeRatio: data.Valuation?.ForwardPE ?? 0,
-                    psRatio: data.Valuation?.PriceSalesTTM ?? 0,
-                    pbRatio: data.Valuation?.PriceBookMRQ ?? 0,
-                },
-                marketCap: data.Highlights?.MarketCapitalization ?? 0,
-                dividend: data.Highlights?.DividendYield ?? 0,
-                grossMargin: data.Highlights?.ProfitMargin ?? 0,
-                quarterly: this.getChartData(data, 'quarterly'),
-                yearly: this.getChartData(data, 'yearly'),
-                companyInformation: {
-                    ceo: data.General?.Officers[0].Name ?? 'N/A',
-                    employees: data.General?.FullTimeEmployees ?? 0,
-                    headquarters:
-                        `${data.General?.AddressData?.City}, ${data.General?.AddressData?.Country}` ??
-                        'N/A',
-                    industry: data.General?.Industry ?? 'N/A',
-                    sharesShort: data.Technicals?.SharesShort ?? 0,
-                    shortInterest: data.Technicals?.ShortPercent ?? 0,
-                    website: data.General?.WebURL ?? 'N/A',
-                },
-                ownership: {
-                    institutionalBreakdown: this.createPieChart(data),
-                    institutionalOwners: institutionalOwners,
-                },
-            };
+        const ownership = await lastValueFrom(
+            this.httpService
+                .get(
+                    `${this.apiUrl}/institutional-ownership/${ticker}?apikey=${this.apiKey}`,
+                )
+                .pipe(map((response) => response.data)),
+        );
 
-            return formattedData;
-        } catch (error) {
-            console.error('Error fetching or processing data:', error.message);
-            throw new HttpException(
-                `Failed to fetch data: ${error.message}`,
-                HttpStatus.INTERNAL_SERVER_ERROR,
-            );
-        }
+        const companyDto: CompanyDto = {
+            company: {
+                name: companyProfile.companyName,
+                logoUrl: companyProfile.image,
+                ticker: companyProfile.symbol,
+                sector: companyProfile.sector,
+                industry: companyProfile.industry,
+                currencySymbol: companyProfile.currency,
+                exchange: companyProfile.exchange,
+            },
+            growthMetrics: {
+                revenueGrowthYoY: financialGrowth.revenueGrowth,
+                profitsGrowthYoY: financialGrowth.netIncomeGrowth,
+            },
+            valuation: {
+                peRatio: keyMetrics.peRatioTTM,
+                forwardPeRatio: keyMetrics.forwardPE,
+                psRatio: keyMetrics.psRatioTTM,
+                pbRatio: keyMetrics.pbRatioTTM,
+            },
+            technicals: {
+                '52weekHigh': companyProfile['52WeekHigh'],
+                '52weekLow': companyProfile['52WeekLow'],
+                revenue: companyProfile.revenue,
+                wallStreetTargetPrice: companyProfile.priceTarget,
+                ebitda: companyProfile.ebitda,
+            },
+            marketCap: companyProfile.marketCap,
+            dividend: companyProfile.dividendYield,
+            grossMargin: companyProfile.grossMargin,
+            quarterly: [], // This would require further API calls to populate
+            yearly: [], // This would require further API calls to populate
+            companyInformation: {
+                ceo: companyProfile.ceo,
+                employees: companyProfile.fullTimeEmployees,
+                headquarters: companyProfile.address,
+                industry: companyProfile.industry,
+                website: companyProfile.website,
+                shortInterest: companyProfile.shortInterest,
+                sharesShort: companyProfile.sharesShort,
+            },
+            ownership: {
+                institutionalOwners: ownership.map((owner) => ({
+                    name: owner.name,
+                    totalShares: owner.shares,
+                })),
+                institutionalBreakdown: {
+                    labels: ownership.map((owner) => owner.name),
+                    datasets: [
+                        {
+                            data: ownership.map((owner) => owner.shares),
+                            backgroundColor: ownership.map(
+                                () =>
+                                    '#' +
+                                    Math.floor(
+                                        Math.random() * 16777215,
+                                    ).toString(16),
+                            ), // Random colors
+                        },
+                    ],
+                },
+            },
+        };
+
+        return companyDto;
     }
 
     private getChartData(
