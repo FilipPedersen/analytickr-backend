@@ -1,5 +1,3 @@
-// src/company/company.service.ts
-
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { map } from 'rxjs/operators';
@@ -18,7 +16,6 @@ import {
 
 @Injectable()
 export class CompanyService {
-    private readonly apiUrl = 'https://financialmodelingprep.com/api/v3';
     private readonly apiKey: string;
     private readonly logger = new Logger(CompanyService.name);
 
@@ -32,61 +29,67 @@ export class CompanyService {
     async getCompanyData(ticker: string): Promise<CompanyDto> {
         this.logger.debug(`Fetching data for ticker: ${ticker}`);
 
-        const companyProfile = await this.fetchData(
-            `${this.apiUrl}/profile/${ticker}?apikey=${this.apiKey}`,
-        );
-        const incomeStatements = await this.getFinancialData(
-            ticker,
-            'income-statement',
-        );
-        const cashFlowStatements = await this.getFinancialData(
-            ticker,
-            'cash-flow-statement',
-        );
-        const balanceSheetStatements = await this.getFinancialData(
-            ticker,
-            'balance-sheet-statement',
-        );
-        const keyMetrics = await this.fetchData(
-            `${this.apiUrl}/key-metrics-ttm/${ticker}?apikey=${this.apiKey}`,
-        );
-        // const ownershipData = await this.fetchData(
-        //     `${this.apiUrl}/institutional-ownership/${ticker}?apikey=${this.apiKey}`,
-        // );
+        const [
+            companyOutlookData,
+            cashFlowDataQuarterly,
+            cashFlowDataAnnual,
+            incomeStatementQuarter,
+            incomeStatementAnnual,
+            balanceSheetQuarter,
+            balanceSheetAnnual,
+        ] = await Promise.all([
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v4/company-outlook?symbol=${ticker}&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/cash-flow-statement/${ticker}?period=quarter&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/cash-flow-statement/${ticker}?period=annual&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/income-statement/${ticker}?period=quarter&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/income-statement/${ticker}?period=annual&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/balance-sheet-statement/${ticker}?period=quarter&apikey=${this.apiKey}`,
+            ),
+            this.fetchData(
+                `https://financialmodelingprep.com/api/v3/balance-sheet-statement/${ticker}?period=annual&apikey=${this.apiKey}`,
+            ),
+        ]);
 
-        const [quarterly, yearly] = this.splitFinancialData(
-            incomeStatements,
-            cashFlowStatements,
-            balanceSheetStatements,
-        );
+        const profile = companyOutlookData.profile;
+        const metrics = companyOutlookData.metrics;
+        const ratios = companyOutlookData.ratios[0];
+        const financialsAnnual = companyOutlookData.financialsAnnual.income;
+        const financialsQuarter = companyOutlookData.financialsQuarter.income;
 
         const companyDto: CompanyDto = {
-            company: {
-                name: companyProfile[0].companyName,
-                logoUrl: companyProfile[0].image,
-                ticker: companyProfile[0].symbol,
-                sector: companyProfile[0].sector,
-                industry: companyProfile[0].industry,
-                currencySymbol: companyProfile[0].currency,
-                exchange: companyProfile[0].exchangeShortName,
-            },
-            growthMetrics: {
-                revenueGrowthYoY: keyMetrics[0].revenueGrowth,
-                profitsGrowthYoY: keyMetrics[0].netIncomeGrowth,
-            },
-            valuation: {
-                peRatio: keyMetrics.peRatioTTM,
-                forwardPeRatio: keyMetrics.forwardPE,
-                psRatio: keyMetrics.psRatioTTM,
-                pbRatio: keyMetrics.pbRatioTTM,
-            },
-            technicals: {} as Technicals,
-            marketCap: companyProfile.marketCap,
-            dividend: companyProfile.dividendYield,
-            grossMargin: companyProfile.grossMargin,
-            quarterly,
-            yearly,
-            companyInformation: this.mapCompanyInformation(companyProfile),
+            company: this.mapCompanyProfile(profile),
+            growthMetrics: this.mapGrowthMetrics(metrics),
+            valuation: this.mapValuation(ratios),
+            technicals: this.mapTechnicals(profile),
+            marketCap: profile.mktCap,
+            dividend: ratios.dividendYielPercentageTTM,
+            grossMargin: ratios.grossProfitMarginTTM,
+            quarterly: this.getChartData(
+                financialsQuarter,
+                cashFlowDataQuarterly,
+                incomeStatementQuarter,
+                balanceSheetQuarter,
+                'quarterly',
+            ),
+            yearly: this.getChartData(
+                financialsAnnual,
+                cashFlowDataAnnual,
+                incomeStatementAnnual,
+                balanceSheetAnnual,
+                'yearly',
+            ),
+            companyInformation: this.mapCompanyInformation(profile),
             ownership: {} as Ownership,
         };
 
@@ -111,88 +114,113 @@ export class CompanyService {
         }
     }
 
-    private async getFinancialData(
-        ticker: string,
-        endpoint: string,
-    ): Promise<any[]> {
-        const url = `${this.apiUrl}/${endpoint}/${ticker}?apikey=${this.apiKey}`;
-        return this.fetchData(url);
+    private mapCompanyProfile(profile: any): Company {
+        return {
+            name: profile.companyName,
+            logoUrl: profile.image,
+            ticker: profile.symbol,
+            sector: profile.sector,
+            industry: profile.industry,
+            currencySymbol: profile.currency,
+            exchange: profile.exchangeShortName,
+        };
     }
 
-    private splitFinancialData(
-        incomeStatements: any[],
-        cashFlowStatements: any[],
-        balanceSheetStatements: any[],
-    ): [ChartData[], ChartData[]] {
-        const quarterly = this.getChartData(
-            incomeStatements.filter((entry) => entry.period === 'Q'),
-            cashFlowStatements.filter((entry) => entry.period === 'Q'),
-            balanceSheetStatements.filter((entry) => entry.period === 'Q'),
-            'quarterly',
-        );
+    private mapTechnicals(profile: any): Technicals {
+        return {
+            range: profile.range,
+            revenue: profile.revenue,
+            wallStreetTargetPrice: profile.priceTargetAverage,
+            ebitda: profile.ebitda,
+        };
+    }
 
-        const yearly = this.getChartData(
-            incomeStatements.filter((entry) => entry.period === 'FY'),
-            cashFlowStatements.filter((entry) => entry.period === 'FY'),
-            balanceSheetStatements.filter((entry) => entry.period === 'FY'),
-            'yearly',
-        );
+    private mapGrowthMetrics(metrics: any): GrowthMetrics {
+        return {
+            revenueGrowthYoY: metrics.revenueGrowthYoY,
+            profitsGrowthYoY: metrics.profitsGrowthYoY,
+        };
+    }
 
-        return [quarterly, yearly];
+    private mapValuation(ratios: any): Valuation {
+        return {
+            peRatio: ratios.peRatioTTM,
+            forwardPeRatio: ratios.peRatioTTM, // Update this if forward PE is available elsewhere
+            psRatio: ratios.priceToSalesRatioTTM,
+            pbRatio: ratios.priceToBookRatioTTM,
+        };
+    }
+
+    private mapCompanyInformation(profile: any): CompanyInformation {
+        return {
+            ceo: profile.ceo,
+            employees: profile.fullTimeEmployees,
+            headquarters: `${profile.address}, ${profile.city}, ${profile.state}, ${profile.zip}`,
+            industry: profile.industry,
+            website: profile.website,
+            shortInterest: 0, // Update if this data is available
+            sharesShort: 0, // Update if this data is available
+        };
     }
 
     private getChartData(
-        incomeStatements: any[],
-        cashFlowStatements: any[],
-        balanceSheetStatements: any[],
+        financialData: any[],
+        cashFlowData: any[],
+        incomeStatementData: any[],
+        balanceSheetData: any[],
         period: 'quarterly' | 'yearly',
     ): ChartData[] {
-        const labels = this.getLabels(
-            incomeStatements || cashFlowStatements || balanceSheetStatements,
-            period,
-        );
+        const labels = this.getLabels(financialData, period);
 
         const netIncomeData = this.getDataForLabels(
-            incomeStatements,
+            cashFlowData,
             labels,
             'netIncome',
             period,
             'millions',
         );
-        const cashFlowData = this.getDataForLabels(
-            cashFlowStatements,
+        const totalRevenue = this.getDataForLabels(
+            incomeStatementData,
+            labels,
+            'revenue',
+            period,
+            'millions',
+        );
+        const sellingGeneralAndAdministrativeExpenses = this.getDataForLabels(
+            incomeStatementData,
+            labels,
+            'sellingGeneralAndAdministrativeExpenses',
+            period,
+            'millions',
+        );
+        const researchAndDevelopmentExpenses = this.getDataForLabels(
+            incomeStatementData,
+            labels,
+            'researchAndDevelopmentExpenses',
+            period,
+            'millions',
+        );
+        const freeCashFlow = this.getDataForLabels(
+            cashFlowData,
             labels,
             'freeCashFlow',
             period,
             'millions',
         );
-        const balanceSheetData = this.getDataForLabels(
-            balanceSheetStatements,
+        const sharesOutstanding = this.getDataForLabels(
+            incomeStatementData,
             labels,
-            'commonStockSharesOutstanding',
+            'weightedAverageShsOut',
             period,
             'millions',
         );
-        const totalRevenue = this.getDataForLabels(
-            incomeStatements,
-            labels,
-            'totalRevenue',
-            period,
-            'millions',
-        );
-        const cashVsDebtData = this.getCashVsDebtData(
-            balanceSheetStatements,
+
+        const cashVsDebt = this.getCashVsDebtData(
+            balanceSheetData,
             labels,
             period,
             'bar',
             'Cash vs Debt',
-        );
-        const operatingLeverageData = this.getOperatingLeverageData(
-            incomeStatements,
-            labels,
-            period,
-            'line',
-            'Operating Leverage',
         );
 
         return [
@@ -202,7 +230,6 @@ export class CompanyService {
                 datasets: [
                     {
                         data: netIncomeData.data,
-                        label: 'Net Income',
                         color: 'grey',
                     },
                 ],
@@ -211,11 +238,10 @@ export class CompanyService {
             },
             {
                 labels,
-                label: 'Total Revenue',
+                label: 'Revenue',
                 datasets: [
                     {
                         data: totalRevenue.data,
-                        label: 'Total Revenue',
                         color: 'blue',
                     },
                 ],
@@ -224,32 +250,47 @@ export class CompanyService {
             },
             {
                 labels,
-                label: 'Free Cash Flow',
+                label: 'Free Cashflow',
                 datasets: [
                     {
-                        data: cashFlowData.data,
-                        label: 'Free Cash Flow',
+                        data: freeCashFlow.data,
                         color: 'green',
                     },
                 ],
-                metric: cashFlowData.metric,
+                metric: freeCashFlow.metric,
                 chartType: 'bar',
             },
+            {
+                labels,
+                label: 'Operating Expenses',
+                datasets: [
+                    {
+                        data: sellingGeneralAndAdministrativeExpenses.data,
+                        label: 'SG&A',
+                        color: 'blue',
+                    },
+                    {
+                        data: researchAndDevelopmentExpenses.data,
+                        label: 'R&D',
+                        color: 'green',
+                    },
+                ],
+                metric: sellingGeneralAndAdministrativeExpenses.metric,
+                chartType: 'bar',
+            },
+            cashVsDebt,
             {
                 labels,
                 label: 'Shares Outstanding',
                 datasets: [
                     {
-                        data: balanceSheetData.data,
-                        label: 'Shares Outstanding',
+                        data: sharesOutstanding.data,
                         color: 'red',
                     },
                 ],
-                metric: balanceSheetData.metric,
+                metric: sharesOutstanding.metric,
                 chartType: 'bar',
             },
-            cashVsDebtData,
-            operatingLeverageData,
         ];
     }
 
@@ -362,6 +403,26 @@ export class CompanyService {
         };
     }
 
+    // private mapOwnership(insideTrades: any[]): Ownership {
+    //     const institutionalOwners = insideTrades.map(trade => ({
+    //         name: trade.reportingName,
+    //         totalShares: trade.securitiesOwned,
+    //     }));
+
+    //     const institutionalBreakdown = {
+    //         labels: insideTrades.map(trade => trade.reportingName),
+    //         datasets: [{
+    //             data: insideTrades.map(trade => trade.securitiesOwned),
+    //             backgroundColor: insideTrades.map(() => '#' + Math.floor(Math.random()*16777215).toString(16)),  // Random colors
+    //         }],
+    //     };
+
+    //     return {
+    //         institutionalOwners,
+    //         institutionalBreakdown,
+    //     };
+    // }
+
     private getCashVsDebtData(
         balanceSheetStatements: any[],
         labels: string[],
@@ -372,14 +433,14 @@ export class CompanyService {
         const cash = this.getDataForLabels(
             balanceSheetStatements,
             labels,
-            'cashAndEquivalents',
+            'cashAndCashEquivalents',
             period,
             'millions',
         );
         const debt = this.getDataForLabels(
             balanceSheetStatements,
             labels,
-            'shortLongTermDebtTotal',
+            'totalDebt',
             period,
             'millions',
         );
@@ -393,56 +454,6 @@ export class CompanyService {
             ],
             metric: cash.metric,
             chartType: chartType,
-        };
-    }
-
-    private mapCompanyProfile(profile: any): Company {
-        return {
-            name: profile.companyName,
-            logoUrl: profile.image,
-            ticker: profile.symbol,
-            sector: profile.sector,
-            industry: profile.industry,
-            currencySymbol: profile.currency,
-            exchange: profile.exchange,
-        };
-    }
-
-    private mapGrowthMetrics(keyMetrics: any): GrowthMetrics {
-        return {
-            revenueGrowthYoY: keyMetrics.revenueGrowth,
-            profitsGrowthYoY: keyMetrics.netIncomeGrowth,
-        };
-    }
-
-    private mapValuation(keyMetrics: any): Valuation {
-        return {
-            peRatio: keyMetrics.peRatioTTM,
-            forwardPeRatio: keyMetrics.forwardPE,
-            psRatio: keyMetrics.psRatioTTM,
-            pbRatio: keyMetrics.pbRatioTTM,
-        };
-    }
-
-    private mapTechnicals(profile: any): Technicals {
-        return {
-            '52weekHigh': profile['52WeekHigh'],
-            '52weekLow': profile['52WeekLow'],
-            revenue: profile.revenue,
-            wallStreetTargetPrice: profile.priceTarget,
-            ebitda: profile.ebitda,
-        };
-    }
-
-    private mapCompanyInformation(profile: any): CompanyInformation {
-        return {
-            ceo: profile.ceo,
-            employees: profile.fullTimeEmployees,
-            headquarters: profile.address,
-            industry: profile.industry,
-            website: profile.website,
-            shortInterest: profile.shortInterest,
-            sharesShort: profile.sharesShort,
         };
     }
 

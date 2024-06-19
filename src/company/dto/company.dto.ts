@@ -13,8 +13,7 @@ export interface CompanyDto {
 }
 
 export interface Technicals {
-    '52weekHigh': number;
-    '52weekLow': number;
+    range: string;
     revenue: number;
     wallStreetTargetPrice: number;
     ebitda: number;
@@ -30,7 +29,7 @@ export interface ChartData {
 
 export interface Dataset {
     data: number[];
-    label: string;
+    label?: string;
     color: string;
 }
 export interface Valuation {
