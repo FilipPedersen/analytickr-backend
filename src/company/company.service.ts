@@ -1,67 +1,78 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import { ChartData, CompanyDto, PieChart } from './dto/company.dto';
-import {
-    EHDStockFundamentals,
-    EHDIncomeStatement,
-    EHDCashFlow,
-    EHDBalanceSheet,
-} from 'ehd-js/src/types/model';
-import { lastValueFrom, map } from 'rxjs';
-import { HttpService } from '@nestjs/axios';
+// src/company/company.service.ts
 
-const API_KEY = process.env.FMP_API_KEY;
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { map } from 'rxjs/operators';
+import { lastValueFrom } from 'rxjs';
+import { HttpService } from '@nestjs/axios';
+import {
+    CompanyDto,
+    ChartData,
+    Company,
+    GrowthMetrics,
+    Valuation,
+    Technicals,
+    CompanyInformation,
+    Ownership,
+} from './dto/company.dto';
 
 @Injectable()
 export class CompanyService {
     private readonly apiUrl = 'https://financialmodelingprep.com/api/v3';
-    private readonly apiKey = API_KEY;
+    private readonly apiKey: string;
+    private readonly logger = new Logger(CompanyService.name);
 
-    constructor(private httpService: HttpService) {}
+    constructor(
+        private readonly httpService: HttpService,
+        private readonly configService: ConfigService,
+    ) {
+        this.apiKey = this.configService.get<string>('FMP_API_KEY');
+    }
 
-    async getCompanyFundamentals(ticker: string): Promise<CompanyDto> {
-        const companyProfile = await lastValueFrom(
-            this.httpService
-                .get(`${this.apiUrl}/profile/${ticker}?apikey=${this.apiKey}`)
-                .pipe(map((response) => response.data[0])),
+    async getCompanyData(ticker: string): Promise<CompanyDto> {
+        this.logger.debug(`Fetching data for ticker: ${ticker}`);
+
+        const companyProfile = await this.fetchData(
+            `${this.apiUrl}/profile/${ticker}?apikey=${this.apiKey}`,
         );
-
-        const financialGrowth = await lastValueFrom(
-            this.httpService
-                .get(
-                    `${this.apiUrl}/financial-growth/${ticker}?apikey=${this.apiKey}`,
-                )
-                .pipe(map((response) => response.data[0])),
+        const incomeStatements = await this.getFinancialData(
+            ticker,
+            'income-statement',
         );
-
-        const keyMetrics = await lastValueFrom(
-            this.httpService
-                .get(
-                    `${this.apiUrl}/key-metrics-ttm/${ticker}?apikey=${this.apiKey}`,
-                )
-                .pipe(map((response) => response.data[0])),
+        const cashFlowStatements = await this.getFinancialData(
+            ticker,
+            'cash-flow-statement',
         );
+        const balanceSheetStatements = await this.getFinancialData(
+            ticker,
+            'balance-sheet-statement',
+        );
+        const keyMetrics = await this.fetchData(
+            `${this.apiUrl}/key-metrics-ttm/${ticker}?apikey=${this.apiKey}`,
+        );
+        // const ownershipData = await this.fetchData(
+        //     `${this.apiUrl}/institutional-ownership/${ticker}?apikey=${this.apiKey}`,
+        // );
 
-        const ownership = await lastValueFrom(
-            this.httpService
-                .get(
-                    `${this.apiUrl}/institutional-ownership/${ticker}?apikey=${this.apiKey}`,
-                )
-                .pipe(map((response) => response.data)),
+        const [quarterly, yearly] = this.splitFinancialData(
+            incomeStatements,
+            cashFlowStatements,
+            balanceSheetStatements,
         );
 
         const companyDto: CompanyDto = {
             company: {
-                name: companyProfile.companyName,
-                logoUrl: companyProfile.image,
-                ticker: companyProfile.symbol,
-                sector: companyProfile.sector,
-                industry: companyProfile.industry,
-                currencySymbol: companyProfile.currency,
-                exchange: companyProfile.exchange,
+                name: companyProfile[0].companyName,
+                logoUrl: companyProfile[0].image,
+                ticker: companyProfile[0].symbol,
+                sector: companyProfile[0].sector,
+                industry: companyProfile[0].industry,
+                currencySymbol: companyProfile[0].currency,
+                exchange: companyProfile[0].exchangeShortName,
             },
             growthMetrics: {
-                revenueGrowthYoY: financialGrowth.revenueGrowth,
-                profitsGrowthYoY: financialGrowth.netIncomeGrowth,
+                revenueGrowthYoY: keyMetrics[0].revenueGrowth,
+                profitsGrowthYoY: keyMetrics[0].netIncomeGrowth,
             },
             valuation: {
                 peRatio: keyMetrics.peRatioTTM,
@@ -69,106 +80,115 @@ export class CompanyService {
                 psRatio: keyMetrics.psRatioTTM,
                 pbRatio: keyMetrics.pbRatioTTM,
             },
-            technicals: {
-                '52weekHigh': companyProfile['52WeekHigh'],
-                '52weekLow': companyProfile['52WeekLow'],
-                revenue: companyProfile.revenue,
-                wallStreetTargetPrice: companyProfile.priceTarget,
-                ebitda: companyProfile.ebitda,
-            },
+            technicals: {} as Technicals,
             marketCap: companyProfile.marketCap,
             dividend: companyProfile.dividendYield,
             grossMargin: companyProfile.grossMargin,
-            quarterly: [], // This would require further API calls to populate
-            yearly: [], // This would require further API calls to populate
-            companyInformation: {
-                ceo: companyProfile.ceo,
-                employees: companyProfile.fullTimeEmployees,
-                headquarters: companyProfile.address,
-                industry: companyProfile.industry,
-                website: companyProfile.website,
-                shortInterest: companyProfile.shortInterest,
-                sharesShort: companyProfile.sharesShort,
-            },
-            ownership: {
-                institutionalOwners: ownership.map((owner) => ({
-                    name: owner.name,
-                    totalShares: owner.shares,
-                })),
-                institutionalBreakdown: {
-                    labels: ownership.map((owner) => owner.name),
-                    datasets: [
-                        {
-                            data: ownership.map((owner) => owner.shares),
-                            backgroundColor: ownership.map(
-                                () =>
-                                    '#' +
-                                    Math.floor(
-                                        Math.random() * 16777215,
-                                    ).toString(16),
-                            ), // Random colors
-                        },
-                    ],
-                },
-            },
+            quarterly,
+            yearly,
+            companyInformation: this.mapCompanyInformation(companyProfile),
+            ownership: {} as Ownership,
         };
 
         return companyDto;
     }
 
+    private async fetchData(url: string): Promise<any> {
+        this.logger.debug(`Fetching data from URL: ${url}`);
+        try {
+            const response = await lastValueFrom(
+                this.httpService
+                    .get(url)
+                    .pipe(map((response) => response.data)),
+            );
+            return response;
+        } catch (error) {
+            this.logger.error(
+                `Error fetching data from URL: ${url}`,
+                error.stack,
+            );
+            throw error;
+        }
+    }
+
+    private async getFinancialData(
+        ticker: string,
+        endpoint: string,
+    ): Promise<any[]> {
+        const url = `${this.apiUrl}/${endpoint}/${ticker}?apikey=${this.apiKey}`;
+        return this.fetchData(url);
+    }
+
+    private splitFinancialData(
+        incomeStatements: any[],
+        cashFlowStatements: any[],
+        balanceSheetStatements: any[],
+    ): [ChartData[], ChartData[]] {
+        const quarterly = this.getChartData(
+            incomeStatements.filter((entry) => entry.period === 'Q'),
+            cashFlowStatements.filter((entry) => entry.period === 'Q'),
+            balanceSheetStatements.filter((entry) => entry.period === 'Q'),
+            'quarterly',
+        );
+
+        const yearly = this.getChartData(
+            incomeStatements.filter((entry) => entry.period === 'FY'),
+            cashFlowStatements.filter((entry) => entry.period === 'FY'),
+            balanceSheetStatements.filter((entry) => entry.period === 'FY'),
+            'yearly',
+        );
+
+        return [quarterly, yearly];
+    }
+
     private getChartData(
-        data: EHDStockFundamentals,
+        incomeStatements: any[],
+        cashFlowStatements: any[],
+        balanceSheetStatements: any[],
         period: 'quarterly' | 'yearly',
     ): ChartData[] {
-        const incomeStatement = data.Financials.Income_Statement[period];
-        const cashFlow = data.Financials.Cash_Flow[period];
-        const balanceSheet = data.Financials.Balance_Sheet[period];
-
         const labels = this.getLabels(
-            incomeStatement || cashFlow || balanceSheet,
+            incomeStatements || cashFlowStatements || balanceSheetStatements,
             period,
         );
 
         const netIncomeData = this.getDataForLabels(
-            incomeStatement,
+            incomeStatements,
             labels,
             'netIncome',
             period,
             'millions',
         );
         const cashFlowData = this.getDataForLabels(
-            cashFlow,
+            cashFlowStatements,
             labels,
             'freeCashFlow',
             period,
             'millions',
         );
         const balanceSheetData = this.getDataForLabels(
-            balanceSheet,
+            balanceSheetStatements,
             labels,
             'commonStockSharesOutstanding',
             period,
             'millions',
         );
-
         const totalRevenue = this.getDataForLabels(
-            incomeStatement,
+            incomeStatements,
             labels,
             'totalRevenue',
             period,
             'millions',
         );
-
         const cashVsDebtData = this.getCashVsDebtData(
-            balanceSheet,
+            balanceSheetStatements,
             labels,
             period,
             'bar',
             'Cash vs Debt',
         );
-
         const operatingLeverageData = this.getOperatingLeverageData(
-            incomeStatement,
+            incomeStatements,
             labels,
             period,
             'line',
@@ -179,7 +199,6 @@ export class CompanyService {
             {
                 labels,
                 label: 'Net Income',
-
                 datasets: [
                     {
                         data: netIncomeData.data,
@@ -234,112 +253,12 @@ export class CompanyService {
         ];
     }
 
-    private createPieChart(data: EHDStockFundamentals): PieChart {
-        const institutionalOwnership = parseFloat(
-            data.SharesStats.PercentInstitutions.toFixed(1),
-        );
-        const insiderOwnership = parseFloat(
-            data.SharesStats.PercentInsiders.toFixed(1),
-        );
-        const retailOwnership = parseFloat(
-            (100 - institutionalOwnership - insiderOwnership).toFixed(1),
-        );
-
-        return {
-            labels: ['Institutional', 'Insider', 'Retail'],
-            datasets: [
-                {
-                    data: [
-                        institutionalOwnership,
-                        insiderOwnership,
-                        retailOwnership,
-                    ],
-                    backgroundColor: ['#A8DADC', '#457B9D', '#1D3557'],
-                },
-            ],
-        };
-    }
-
-    private getOperatingLeverageData(
-        incomeStatement: Record<string, EHDIncomeStatement>,
-        labels: string[],
-        period: 'quarterly' | 'yearly',
-        chartType: string,
-        label: string,
-    ): ChartData {
-        const revenue = this.getDataForLabels(
-            incomeStatement,
-            labels,
-            'totalRevenue',
-            period,
-            'millions',
-        );
-        const operatingExpenses = this.getDataForLabels(
-            incomeStatement,
-            labels,
-            'totalOperatingExpenses',
-            period,
-            'millions',
-        );
-
-        return {
-            labels,
-            label: label,
-            datasets: [
-                { data: revenue.data, label: 'Revenue', color: 'blue' },
-                {
-                    data: operatingExpenses.data,
-                    label: 'Operating Expenses',
-                    color: 'purple',
-                },
-            ],
-            metric: revenue.metric,
-            chartType: chartType,
-        };
-    }
-
-    private getCashVsDebtData(
-        balanceSheet: Record<string, EHDBalanceSheet>,
-        labels: string[],
-        period: 'quarterly' | 'yearly',
-        chartType: string,
-        label: string,
-    ): ChartData {
-        const cash = this.getDataForLabels(
-            balanceSheet,
-            labels,
-            'cashAndEquivalents',
-            period,
-            'millions',
-        );
-        const debt = this.getDataForLabels(
-            balanceSheet,
-            labels,
-            'shortLongTermDebtTotal',
-            period,
-            'millions',
-        );
-
-        return {
-            labels,
-            label: label,
-            datasets: [
-                { data: cash.data, label: 'Cash', color: 'green' },
-                { data: debt.data, label: 'Debt', color: 'red' },
-            ],
-            metric: cash.metric,
-            chartType: chartType,
-        };
-    }
-
     private getLabels(
-        financialData: Record<
-            string,
-            EHDIncomeStatement | EHDCashFlow | EHDBalanceSheet
-        >,
+        financialData: any[],
         period: 'quarterly' | 'yearly',
     ): string[] {
-        return Object.keys(financialData)
+        return financialData
+            .map((entry) => entry.date)
             .reverse()
             .filter(
                 (key) =>
@@ -358,20 +277,20 @@ export class CompanyService {
     }
 
     private getDataForLabels(
-        financialData: Record<string, any>,
+        financialData: any[],
         labels: string[],
         metric: string,
         period: 'quarterly' | 'yearly',
         format: 'millions' | 'thousands' | 'percent',
     ): { data: number[]; metric: string } {
-        const dataMap = Object.keys(financialData).reduce(
-            (acc, key) => {
-                const dt = new Date(key);
+        const dataMap = financialData.reduce(
+            (acc, entry) => {
+                const dt = new Date(entry.date);
                 const formattedKey =
                     period === 'quarterly'
                         ? `Q${Math.ceil((dt.getMonth() + 1) / 3)}'${dt.getFullYear().toString().slice(-2)}`
                         : dt.getFullYear().toString();
-                acc[formattedKey] = parseFloat(financialData[key][metric]);
+                acc[formattedKey] = parseFloat(entry[metric]);
                 return acc;
             },
             {} as Record<string, number>,
@@ -404,4 +323,146 @@ export class CompanyService {
                 return { data, metric: '' };
         }
     }
+
+    private getOperatingLeverageData(
+        incomeStatements: any[],
+        labels: string[],
+        period: 'quarterly' | 'yearly',
+        chartType: string,
+        label: string,
+    ): ChartData {
+        const revenue = this.getDataForLabels(
+            incomeStatements,
+            labels,
+            'totalRevenue',
+            period,
+            'millions',
+        );
+        const operatingExpenses = this.getDataForLabels(
+            incomeStatements,
+            labels,
+            'totalOperatingExpenses',
+            period,
+            'millions',
+        );
+
+        return {
+            labels,
+            label: label,
+            datasets: [
+                { data: revenue.data, label: 'Revenue', color: 'blue' },
+                {
+                    data: operatingExpenses.data,
+                    label: 'Operating Expenses',
+                    color: 'purple',
+                },
+            ],
+            metric: revenue.metric,
+            chartType: chartType,
+        };
+    }
+
+    private getCashVsDebtData(
+        balanceSheetStatements: any[],
+        labels: string[],
+        period: 'quarterly' | 'yearly',
+        chartType: string,
+        label: string,
+    ): ChartData {
+        const cash = this.getDataForLabels(
+            balanceSheetStatements,
+            labels,
+            'cashAndEquivalents',
+            period,
+            'millions',
+        );
+        const debt = this.getDataForLabels(
+            balanceSheetStatements,
+            labels,
+            'shortLongTermDebtTotal',
+            period,
+            'millions',
+        );
+
+        return {
+            labels,
+            label: label,
+            datasets: [
+                { data: cash.data, label: 'Cash', color: 'green' },
+                { data: debt.data, label: 'Debt', color: 'red' },
+            ],
+            metric: cash.metric,
+            chartType: chartType,
+        };
+    }
+
+    private mapCompanyProfile(profile: any): Company {
+        return {
+            name: profile.companyName,
+            logoUrl: profile.image,
+            ticker: profile.symbol,
+            sector: profile.sector,
+            industry: profile.industry,
+            currencySymbol: profile.currency,
+            exchange: profile.exchange,
+        };
+    }
+
+    private mapGrowthMetrics(keyMetrics: any): GrowthMetrics {
+        return {
+            revenueGrowthYoY: keyMetrics.revenueGrowth,
+            profitsGrowthYoY: keyMetrics.netIncomeGrowth,
+        };
+    }
+
+    private mapValuation(keyMetrics: any): Valuation {
+        return {
+            peRatio: keyMetrics.peRatioTTM,
+            forwardPeRatio: keyMetrics.forwardPE,
+            psRatio: keyMetrics.psRatioTTM,
+            pbRatio: keyMetrics.pbRatioTTM,
+        };
+    }
+
+    private mapTechnicals(profile: any): Technicals {
+        return {
+            '52weekHigh': profile['52WeekHigh'],
+            '52weekLow': profile['52WeekLow'],
+            revenue: profile.revenue,
+            wallStreetTargetPrice: profile.priceTarget,
+            ebitda: profile.ebitda,
+        };
+    }
+
+    private mapCompanyInformation(profile: any): CompanyInformation {
+        return {
+            ceo: profile.ceo,
+            employees: profile.fullTimeEmployees,
+            headquarters: profile.address,
+            industry: profile.industry,
+            website: profile.website,
+            shortInterest: profile.shortInterest,
+            sharesShort: profile.sharesShort,
+        };
+    }
+
+    // private mapOwnership(ownershipData: any): Ownership {
+    //     const institutionalOwners = ownershipData.map(owner => ({
+    //         name: owner.name,
+    //         totalShares: owner.shares,
+    //     }));
+
+    //     const institutionalBreakdown = {
+    //         labels: ownershipData.map(owner => owner.name),
+    //         datasets: [{
+    //             data: ownershipData.map(owner => owner.shares),
+    //             backgroundColor: ownershipData.map(() => '#' + Math.floor(Math.random()*16777215).toString(16)),  // Random colors
+    //         }],
+    //     };
+
+    //     return {
+    //         institutionalOwners,
+    //         institutionalBreakdown,
+    //     };
+    // }
 }
