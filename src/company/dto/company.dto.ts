@@ -20,11 +20,11 @@ export interface Technicals {
 }
 
 export interface ChartData {
-    labels: string[];
     label: string;
     chartType: string;
     datasets: Dataset[];
     metric: string;
+    [key: string]: string[] | string | Dataset[];
 }
 
 export interface Dataset {
@@ -56,7 +56,7 @@ export interface Company {
 
 export interface CompanyInformation {
     ceo: string;
-    employees: number;
+    employees: string;
     headquarters: string;
     industry: string;
     website: string;
