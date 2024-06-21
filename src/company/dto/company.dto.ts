@@ -24,7 +24,9 @@ export interface ChartData {
     chartType: string;
     datasets: Dataset[];
     metric: string;
-    [key: string]: string[] | string | Dataset[];
+    labels: string[];
+    stacked: boolean;
+    showXAxis: boolean;
 }
 
 export interface Dataset {

@@ -25,7 +25,8 @@ import {
     ProfileDto,
     RatioDto,
 } from './dto/company-outlook.dto';
-import { CompanySharesDto } from './dto/company-shares.dto';
+import { InstitutionalHoldersDto } from './dto/institutional-holders.dto';
+import { PriceTargetDto } from './dto/price-target.dto';
 
 @Injectable()
 export class CompanyService {
@@ -50,8 +51,7 @@ export class CompanyService {
             incomeStatementAnnual,
             balanceSheetQuarter,
             balanceSheetAnnual,
-            ownershipData,
-            companySharesData,
+            priceTargetData,
         ] = await Promise.all([
             this.fetchData<CompanyOutlookDto>(
                 `https://financialmodelingprep.com/api/v4/company-outlook?symbol=${ticker}&apikey=${this.apiKey}`,
@@ -74,14 +74,10 @@ export class CompanyService {
             this.fetchData<BalanceSheetDto[]>(
                 `https://financialmodelingprep.com/api/v3/balance-sheet-statement/${ticker}?period=annual&apikey=${this.apiKey}`,
             ),
-            this.fetchData<any[]>(
-                `https://financialmodelingprep.com/api/v3/institutional-holder/${ticker}?apikey=${this.apiKey}`,
-            ),
-            this.fetchData<CompanySharesDto[]>(
-                `https://financialmodelingprep.com/api/v4/shares_float?${ticker}&apikey=${this.apiKey}`,
+            this.fetchData<PriceTargetDto>(
+                `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}&apikey=${this.apiKey}`,
             ),
         ]);
-        console.log(companySharesData);
         const profile = companyOutlookData.profile;
         const metrics = companyOutlookData.metrics;
         const ratios = companyOutlookData.ratios[0];
@@ -94,7 +90,7 @@ export class CompanyService {
             technicals: {
                 range: profile.range,
                 revenue: financial.revenue,
-                wallStreetTargetPrice: 0, // configure later
+                wallStreetTargetPrice: priceTargetData.targetConsensus, // should only available to premiums
                 ebitda: financial.ebitda,
             },
             marketCap: profile.mktCap,
@@ -113,7 +109,7 @@ export class CompanyService {
                 'yearly',
             ),
             companyInformation: this.mapCompanyInformation(profile),
-            ownership: this.mapOwnership(ownershipData, companySharesData),
+            ownership: {} as Ownership,
         };
 
         return companyDto;
@@ -146,18 +142,6 @@ export class CompanyService {
             industry: profile.industry,
             currencySymbol: profile.currency,
             exchange: profile.exchangeShortName,
-        };
-    }
-
-    private mapTechnicals(
-        profile: ProfileDto,
-        financialData: FinancialDataDto,
-    ): Technicals {
-        return {
-            range: profile.range,
-            revenue: financialData.revenue,
-            wallStreetTargetPrice: 0, // configure later
-            ebitda: financialData.ebitda,
         };
     }
 
@@ -265,6 +249,8 @@ export class CompanyService {
                 ],
                 metric: netIncomeData.metric,
                 chartType: 'bar',
+                stacked: false,
+                showXAxis: true,
             },
             {
                 labels: incomeStatementLabels,
@@ -277,6 +263,8 @@ export class CompanyService {
                 ],
                 metric: totalRevenue.metric,
                 chartType: 'bar',
+                stacked: false,
+                showXAxis: true,
             },
             {
                 labels: cashFlowLabels,
@@ -289,6 +277,8 @@ export class CompanyService {
                 ],
                 metric: freeCashFlow.metric,
                 chartType: 'bar',
+                stacked: false,
+                showXAxis: true,
             },
             {
                 labels: incomeStatementLabels,
@@ -307,6 +297,8 @@ export class CompanyService {
                 ],
                 metric: sellingGeneralAndAdministrativeExpenses.metric,
                 chartType: 'bar',
+                stacked: true,
+                showXAxis: true,
             },
             cashVsDebt,
             {
@@ -320,6 +312,8 @@ export class CompanyService {
                 ],
                 metric: sharesOutstanding.metric,
                 chartType: 'bar',
+                stacked: false,
+                showXAxis: true,
             },
         ];
     }
@@ -351,8 +345,6 @@ export class CompanyService {
                     ? `Q${quarter}'${year}`
                     : dt.getFullYear().toString();
             });
-
-        this.logger.debug(`Generated labels: ${labels}`);
         return labels;
     }
 
@@ -439,12 +431,14 @@ export class CompanyService {
             ],
             metric: revenue.metric,
             chartType: chartType,
+            stacked: false,
+            showXAxis: true,
         };
     }
 
     private mapOwnership(
-        ownershipData: any[],
-        companySharesData: CompanySharesDto[],
+        ownershipData: InstitutionalHoldersDto[],
+        totalSharesOutstanding: number,
     ): {
         institutionalOwners: InstitutionalOwner[];
         institutionalBreakdown: PieChart;
@@ -477,7 +471,7 @@ export class CompanyService {
         );
 
         const retailAndInsiderShares =
-            companySharesData[0].outstandingShares - totalInstitutionalShares;
+            totalSharesOutstanding - totalInstitutionalShares;
 
         // For simplicity, assume insiders are a fraction of retailAndInsiderShares, adjust as needed
         const insidersShares = 0; // Adjust this based on actual data if available
@@ -536,6 +530,8 @@ export class CompanyService {
             ],
             metric: cash.metric,
             chartType: chartType,
+            stacked: false,
+            showXAxis: true,
         };
     }
 }
