@@ -101,8 +101,8 @@ export class HistoricalService {
         data: HistoricalPriceChart[],
         label: string,
     ): ChartData {
-        const labels = data.map((item) => item.date);
-        const closePrices = data.map((item) => item.close);
+        const labels = data.map((item) => item.date).reverse();
+        const closePrices = data.map((item) => item.close).reverse();
 
         return {
             label: 'Price Chart',
@@ -110,6 +110,7 @@ export class HistoricalService {
             datasets: [
                 {
                     data: closePrices,
+                    tension: 0.8,
                     color: 'blue',
                 },
             ],
