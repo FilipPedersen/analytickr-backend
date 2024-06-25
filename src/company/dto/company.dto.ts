@@ -4,6 +4,9 @@ export interface CompanyDto {
     valuation: Valuation;
     technicals: Technicals;
     marketCap: number;
+    volume: number;
+    price: number;
+    changes: number;
     dividend: number;
     grossMargin: number;
     quarterly: ChartData[];
@@ -22,6 +25,7 @@ export interface Technicals {
 export interface ChartData {
     label: string;
     chartType: string;
+    emoji?: string;
     datasets: Dataset[];
     metric: string;
     labels: string[];

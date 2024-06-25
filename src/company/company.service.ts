@@ -94,6 +94,9 @@ export class CompanyService {
                 ebitda: financial.ebitda,
             },
             marketCap: profile.mktCap,
+            volume: metrics.volume,
+            price: profile.price,
+            changes: profile.changes,
             dividend: ratios.dividendYielPercentageTTM,
             grossMargin: ratios.grossProfitMarginTTM,
             quarterly: this.getChartData(
@@ -241,6 +244,7 @@ export class CompanyService {
             {
                 labels: cashFlowLabels,
                 label: 'Net Income',
+                emoji: '💰',
                 datasets: [
                     {
                         data: netIncomeData.data,
@@ -255,6 +259,7 @@ export class CompanyService {
             {
                 labels: incomeStatementLabels,
                 label: 'Revenue',
+                emoji: '📈',
                 datasets: [
                     {
                         data: totalRevenue.data,
@@ -269,6 +274,7 @@ export class CompanyService {
             {
                 labels: cashFlowLabels,
                 label: 'Free Cashflow',
+                emoji: '💸',
                 datasets: [
                     {
                         data: freeCashFlow.data,
@@ -283,6 +289,7 @@ export class CompanyService {
             {
                 labels: incomeStatementLabels,
                 label: 'Operating Expenses',
+                emoji: '💵',
                 datasets: [
                     {
                         data: sellingGeneralAndAdministrativeExpenses.data,
@@ -304,6 +311,7 @@ export class CompanyService {
             {
                 labels: incomeStatementLabels,
                 label: 'Shares Outstanding',
+                emoji: '🧾',
                 datasets: [
                     {
                         data: sharesOutstanding.data,
@@ -523,6 +531,7 @@ export class CompanyService {
 
         return {
             labels,
+            emoji: '⚖️',
             label: label,
             datasets: [
                 { data: cash.data, label: 'Cash', color: 'green' },

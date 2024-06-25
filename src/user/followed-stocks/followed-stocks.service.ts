@@ -28,8 +28,12 @@ export class FollowedStocksService {
         }
         return prisma.stock.create({
             data: {
-                ...stock,
-                userId: user.id,
+                companyName: stock.companyName,
+                ticker: stock.ticker,
+                logoUrl: stock.logoUrl,
+                user: {
+                    connect: { id: user.id },
+                },
             },
         });
     }
